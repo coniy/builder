@@ -1020,7 +1020,7 @@ func (w *worker) commitBundle(env *environment, txs types.Transactions, interrup
 		if interrupt != nil {
 			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
 				return signalToErr(signal)
-				}
+			}
 		}
 		// If we don't have enough gas for any further transactions discard the block
 		// since not all bundles of the were applied
@@ -2004,6 +2004,9 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	availableFunds := new(big.Int).Sub(builderBalance, reserve.builderBalance)
 	if availableFunds.Sign() <= 0 {
 		return errors.New("builder balance decreased")
+	}
+	if reserve.builderBalance.Sign() > 0 {
+		availableFunds.Add(availableFunds, common.Big1)
 	}
 
 	env.gasPool.AddGas(reserve.reservedGas)
