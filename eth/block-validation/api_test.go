@@ -2,7 +2,7 @@ package blockvalidation
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"errors"
 	"math/big"
 	"os"
 	"testing"
@@ -127,7 +127,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	// Test tx from blacklisted address
 	api.accessVerifier = &AccessVerifier{
 		blacklistedAddresses: map[common.Address]struct{}{
-			testAddr: struct{}{},
+			testAddr: {},
 		},
 	}
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "transaction from blacklisted address 0x71562b71999873DB5b286dF957af199Ec94617F7")
@@ -135,7 +135,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	// Test tx to blacklisted address
 	api.accessVerifier = &AccessVerifier{
 		blacklistedAddresses: map[common.Address]struct{}{
-			common.Address{0x16}: struct{}{},
+			{0x16}: {},
 		},
 	}
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "transaction to blacklisted address 0x1600000000000000000000000000000000000000")
@@ -166,6 +166,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 
 func TestValidateBuilderSubmissionV2(t *testing.T) {
 	genesis, preMergeBlocks := generatePreMergeChain(20)
+	os.Setenv("BUILDER_TX_SIGNING_KEY", "0x28c3cd61b687fdd03488e167a5d84f50269df2a4c29a2cfb1390903aa775c5d0")
 	time := preMergeBlocks[len(preMergeBlocks)-1].Time() + 5
 	genesis.Config.ShanghaiTime = &time
 	n, ethservice := startEthService(t, genesis, preMergeBlocks)
@@ -174,6 +175,8 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 
 	api := NewBlockValidationAPI(ethservice, nil)
 	parent := preMergeBlocks[len(preMergeBlocks)-1]
+
+	api.eth.APIBackend.Miner().SetEtherbase(testValidatorAddr)
 
 	// This EVM code generates a log when the contract is created.
 	logCode := common.Hex2Bytes("60606040525b7f24ec1d3ff24c2f6ff210738839dbc339cd45a5294d85c79361016243157aae7b60405180905060405180910390a15b600a8060416000396000f360606040526008565b00")
@@ -207,37 +210,22 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	}
 	withdrawalsRoot := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
 
-	blockRequest := &BuilderBlockValidationRequestV2{
-		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
-			Signature:        phase0.BLSSignature{},
-			Message:          &apiv1.BidTrace{},
-			ExecutionPayload: &capella.ExecutionPayload{},
-		},
-		WithdrawalsRoot: withdrawalsRoot,
-	}
-	// blockRequest.ExecutionPayload.Withdrawals = WithdrawalToBlockRequestWithdrawal(withdrawals)
-	// require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "withdrawals before shanghai")
-
-	// blockRequest.ExecutionPayload.Timestamp -= 1
-	// blockRequest.ExecutionPayload.Withdrawals = WithdrawalToBlockRequestWithdrawal(withdrawals[:1])
-	// updatePayloadHashV2(t, blockRequest)
-	// require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "withdrawals mismatch")
-
 	execData, err := assembleBlock(api, parent.Hash(), &engine.PayloadAttributes{
-		Timestamp:   parent.Time() + 5,
-		Withdrawals: withdrawals,
+		Timestamp:             parent.Time() + 5,
+		Withdrawals:           withdrawals,
+		SuggestedFeeRecipient: testValidatorAddr,
 	})
 	require.NoError(t, err)
 	require.EqualValues(t, len(execData.Withdrawals), 2)
-	require.EqualValues(t, len(execData.Transactions), 3)
+	require.EqualValues(t, len(execData.Transactions), 4)
 
 	payload, err := ExecutableDataToExecutionPayloadV2(execData)
 	require.NoError(t, err)
 
 	proposerAddr := bellatrix.ExecutionAddress{}
-	copy(proposerAddr[:], testAddr.Bytes())
+	copy(proposerAddr[:], testValidatorAddr.Bytes())
 
-	blockRequest = &BuilderBlockValidationRequestV2{
+	blockRequest := &BuilderBlockValidationRequestV2{
 		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
 			Signature: phase0.BLSSignature{},
 			Message: &apiv1.BidTrace{
@@ -255,7 +243,7 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	}
 
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "inaccurate payment")
-	blockRequest.Message.Value = uint256.NewInt(10)
+	blockRequest.Message.Value = uint256.NewInt(149842511727212)
 	require.NoError(t, api.ValidateBuilderSubmissionV2(blockRequest))
 
 	blockRequest.Message.GasLimit += 1
@@ -288,7 +276,7 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	api.accessVerifier = nil
 
 	blockRequest.Message.GasUsed = 10
-	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "incorrect GasUsed 10, expected 98996")
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "incorrect GasUsed 10, expected 119996")
 	blockRequest.Message.GasUsed = execData.GasUsed
 
 	newTestKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f290")
@@ -306,8 +294,7 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	copy(invalidPayload.ReceiptsRoot[:], hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")[:32])
 	blockRequest.ExecutionPayload = invalidPayload
 	updatePayloadHashV2(t, blockRequest)
-	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "could not apply tx 3", "insufficient funds for gas * price + value")
-
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "could not apply tx 4", "insufficient funds for gas * price + value")
 }
 
 func updatePayloadHash(t *testing.T, blockRequest *BuilderBlockValidationRequest) {
@@ -388,7 +375,7 @@ func startEthService(t *testing.T, genesis *core.Genesis, blocks []*types.Block)
 func assembleBlock(api *BlockValidationAPI, parentHash common.Hash, params *engine.PayloadAttributes) (*engine.ExecutableData, error) {
 	args := &miner.BuildPayloadArgs{
 		Parent:       parentHash,
-		Timestamp:    uint64(params.Timestamp),
+		Timestamp:    params.Timestamp,
 		FeeRecipient: params.SuggestedFeeRecipient,
 		GasLimit:     params.GasLimit,
 		Random:       params.Random,
@@ -399,7 +386,12 @@ func assembleBlock(api *BlockValidationAPI, parentHash common.Hash, params *engi
 	if err != nil {
 		return nil, err
 	}
-	return payload.ResolveFull().ExecutionPayload, nil
+
+	if payload := payload.ResolveFull(); payload != nil {
+		return payload.ExecutionPayload, nil
+	}
+
+	return nil, errors.New("payload did not resolve")
 }
 
 func TestBlacklistLoad(t *testing.T) {
@@ -414,15 +406,15 @@ func TestBlacklistLoad(t *testing.T) {
 	ba := BlacklistedAddresses{common.Address{0x13}, common.Address{0x14}}
 	bytes, err := json.MarshalIndent(ba, "", " ")
 	require.NoError(t, err)
-	err = ioutil.WriteFile(file.Name(), bytes, 0644)
+	err = os.WriteFile(file.Name(), bytes, 0644)
 	require.NoError(t, err)
 
 	av, err = NewAccessVerifierFromFile(file.Name())
 	require.NoError(t, err)
 	require.NotNil(t, av)
 	require.EqualValues(t, av.blacklistedAddresses, map[common.Address]struct{}{
-		common.Address{0x13}: struct{}{},
-		common.Address{0x14}: struct{}{},
+		{0x13}: {},
+		{0x14}: {},
 	})
 
 	require.NoError(t, av.verifyTraces(logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, nil)))

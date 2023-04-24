@@ -736,6 +736,11 @@ var (
 		Usage:    "Builder only validates blocks without submission to the relay",
 		Category: flags.BuilderCategory,
 	}
+	BuilderIgnoreLatePayloadAttributes = &cli.BoolFlag{
+		Name:     "builder.ignore_late_payload_attributes",
+		Usage:    "Builder will ignore all but the first payload attributes. Use if your CL sends non-canonical head updates.",
+		Category: flags.BuilderCategory,
+	}
 	BuilderSecretKey = &cli.StringFlag{
 		Name:     "builder.secret_key",
 		Usage:    "Builder key used for signing blocks",
@@ -778,10 +783,10 @@ var (
 		Value:    "0x0000000000000000000000000000000000000000000000000000000000000000",
 		Category: flags.BuilderCategory,
 	}
-	BuilderBeaconEndpoint = &cli.StringFlag{
-		Name:     "builder.beacon_endpoint",
-		Usage:    "Beacon endpoint to connect to for beacon chain data",
-		EnvVars:  []string{"BUILDER_BEACON_ENDPOINT"},
+	BuilderBeaconEndpoints = &cli.StringFlag{
+		Name:     "builder.beacon_endpoints",
+		Usage:    "Comma separated list of beacon endpoints to connect to for beacon chain data",
+		EnvVars:  []string{"BUILDER_BEACON_ENDPOINTS"},
 		Value:    "http://127.0.0.1:5052",
 		Category: flags.BuilderCategory,
 	}
@@ -1602,13 +1607,14 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.SecondsInSlot = ctx.Uint64(BuilderSecondsInSlot.Name)
 	cfg.DisableBundleFetcher = ctx.IsSet(BuilderDisableBundleFetcher.Name)
 	cfg.DryRun = ctx.IsSet(BuilderDryRun.Name)
+	cfg.IgnoreLatePayloadAttributes = ctx.IsSet(BuilderIgnoreLatePayloadAttributes.Name)
 	cfg.BuilderSecretKey = ctx.String(BuilderSecretKey.Name)
 	cfg.RelaySecretKey = ctx.String(BuilderRelaySecretKey.Name)
 	cfg.ListenAddr = ctx.String(BuilderListenAddr.Name)
 	cfg.GenesisForkVersion = ctx.String(BuilderGenesisForkVersion.Name)
 	cfg.BellatrixForkVersion = ctx.String(BuilderBellatrixForkVersion.Name)
 	cfg.GenesisValidatorsRoot = ctx.String(BuilderGenesisValidatorsRoot.Name)
-	cfg.BeaconEndpoint = ctx.String(BuilderBeaconEndpoint.Name)
+	cfg.BeaconEndpoints = strings.Split(ctx.String(BuilderBeaconEndpoints.Name), ",")
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)

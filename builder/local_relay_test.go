@@ -32,7 +32,7 @@ func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *
 	beaconClient := &testBeaconClient{validator: validator}
 	localRelay := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
 	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block, testBlockValue: blockValue}
-	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, localRelay, bDomain, ethService, false, nil)
+	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, localRelay, bDomain, ethService, false, false, nil, beaconClient)
 	// service := NewService("127.0.0.1:31545", backend)
 
 	backend.limiter = rate.NewLimiter(rate.Inf, 0)
@@ -60,7 +60,6 @@ func testRequest(t *testing.T, localRelay *LocalRelay, method string, path strin
 
 func TestValidatorRegistration(t *testing.T) {
 	_, relay, _ := newTestBackend(t, nil, nil, nil)
-	log.Error("rsk", "sk", hexutil.Encode(relay.relaySecretKey.Serialize()))
 
 	v := NewRandomValidator()
 	payload, err := prepareRegistrationMessage(t, relay.builderSigningDomain, v)

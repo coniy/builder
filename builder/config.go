@@ -8,13 +8,14 @@ type Config struct {
 	SecondsInSlot                 uint64   `toml:",omitempty"`
 	DisableBundleFetcher          bool     `toml:",omitempty"`
 	DryRun                        bool     `toml:",omitempty"`
+	IgnoreLatePayloadAttributes   bool     `toml:",omitempty"`
 	BuilderSecretKey              string   `toml:",omitempty"`
 	RelaySecretKey                string   `toml:",omitempty"`
 	ListenAddr                    string   `toml:",omitempty"`
 	GenesisForkVersion            string   `toml:",omitempty"`
 	BellatrixForkVersion          string   `toml:",omitempty"`
 	GenesisValidatorsRoot         string   `toml:",omitempty"`
-	BeaconEndpoint                string   `toml:",omitempty"`
+	BeaconEndpoints               []string `toml:",omitempty"`
 	RemoteRelayEndpoint           string   `toml:",omitempty"`
 	SecondaryRemoteRelayEndpoints []string `toml:",omitempty"`
 	ValidationBlocklist           string   `toml:",omitempty"`
@@ -29,13 +30,14 @@ var DefaultConfig = Config{
 	SecondsInSlot:                 12,
 	DisableBundleFetcher:          false,
 	DryRun:                        false,
+	IgnoreLatePayloadAttributes:   false,
 	BuilderSecretKey:              "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11",
 	RelaySecretKey:                "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11",
 	ListenAddr:                    ":28545",
 	GenesisForkVersion:            "0x00000000",
 	BellatrixForkVersion:          "0x02000000",
 	GenesisValidatorsRoot:         "0x0000000000000000000000000000000000000000000000000000000000000000",
-	BeaconEndpoint:                "http://127.0.0.1:5052",
+	BeaconEndpoints:               []string{"http://127.0.0.1:5052"},
 	RemoteRelayEndpoint:           "",
 	SecondaryRemoteRelayEndpoints: nil,
 	ValidationBlocklist:           "",
