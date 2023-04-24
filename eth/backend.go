@@ -20,6 +20,7 @@ package eth
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/searcher"
 	"math/big"
 	"runtime"
 	"sync"
@@ -313,6 +314,9 @@ func (s *Ethereum) APIs() []rpc.API {
 		}, {
 			Namespace: "net",
 			Service:   s.netRPCService,
+		}, {
+			Namespace: "eth",
+			Service:   searcher.NewSearcherAPI(s.APIBackend, s.BlockChain()),
 		},
 	}...)
 }
