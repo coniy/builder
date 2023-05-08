@@ -82,6 +82,8 @@ type Config struct {
 	MaxMergedBundles    int
 	Blocklist           []common.Address `toml:",omitempty"`
 	NewPayloadTimeout   time.Duration    // The maximum time allowance for creating a new payload
+	MempoolSubsidy      *big.Int
+	FeePermil           int
 }
 
 // DefaultConfig contains default settings for miner.

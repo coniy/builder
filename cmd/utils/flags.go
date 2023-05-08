@@ -591,6 +591,18 @@ var (
 		Value:    ethconfig.Defaults.Miner.NewPayloadTimeout,
 		Category: flags.MinerCategory,
 	}
+	MinerMempoolSubsidyFlag = &flags.BigFlag{
+		Name:     "miner.mempoolsubsidy",
+		Usage:    "Specify the subsidy to be paid to the miner for including transactions from the mempool",
+		Value:    common.Big0,
+		Category: flags.MinerCategory,
+	}
+	MinerFeePermilFlag = &cli.IntFlag{
+		Name:     "miner.feepermil",
+		Usage:    "Specify the fee permil to be paid to the miner for including bundles from searchers",
+		Value:    0,
+		Category: flags.MinerCategory,
+	}
 
 	// Account settings
 	UnlockedAccountFlag = &cli.StringFlag{
@@ -1840,6 +1852,16 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 
 		if err := json.Unmarshal(bytes, &cfg.Blocklist); err != nil {
 			Fatalf("Failed to parse blocklist: %s", err)
+		}
+	}
+	if ctx.IsSet(MinerMempoolSubsidyFlag.Name) {
+		cfg.MempoolSubsidy = flags.GlobalBig(ctx, MinerMempoolSubsidyFlag.Name)
+	}
+	if ctx.IsSet(MinerFeePermilFlag.Name) {
+		cfg.FeePermil = ctx.Int(MinerFeePermilFlag.Name)
+		switch {
+		case cfg.FeePermil < 0 || cfg.FeePermil >= 1000:
+			Fatalf("Invalid fee permil: %d", cfg.FeePermil)
 		}
 	}
 }

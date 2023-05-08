@@ -1487,7 +1487,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 		return finalizeFn(work, orderCloseTime, blockBundles, allBundles, true)
 	}
 
-	err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
+	err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve, len(blockBundles) > 0)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1990,7 +1990,7 @@ func (w *worker) proposerTxPrepare(env *environment, validatorCoinbase *common.A
 	}, nil
 }
 
-func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Address, reserve *proposerTxReservation) error {
+func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Address, reserve *proposerTxReservation, haveBundles bool) error {
 	if reserve == nil || validatorCoinbase == nil {
 		return nil
 	}
@@ -2004,8 +2004,15 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	if availableFunds.Sign() <= 0 {
 		return errors.New("builder balance decreased")
 	}
-	if reserve.builderBalance.Sign() > 0 {
-		availableFunds.Add(availableFunds, common.Big1)
+	if haveBundles {
+		if w.config.FeePermil > 0 {
+			availableFunds.Mul(availableFunds, big.NewInt(int64(1000-w.config.FeePermil)))
+			availableFunds.Div(availableFunds, big.NewInt(1000))
+		}
+	} else {
+		if w.config.MempoolSubsidy.Sign() > 0 && reserve.builderBalance.Cmp(w.config.MempoolSubsidy) > 0 {
+			availableFunds.Add(availableFunds, w.config.MempoolSubsidy)
+		}
 	}
 
 	env.gasPool.AddGas(reserve.reservedGas)

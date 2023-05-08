@@ -133,6 +133,8 @@ var (
 		utils.MinerMaxMergedBundlesFlag,
 		utils.MinerBlocklistFileFlag,
 		utils.MinerNewPayloadTimeout,
+		utils.MinerMempoolSubsidyFlag,
+		utils.MinerFeePermilFlag,
 		utils.NATFlag,
 		utils.NoDiscoverFlag,
 		utils.DiscoveryV5Flag,
