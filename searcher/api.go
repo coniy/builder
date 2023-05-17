@@ -163,11 +163,7 @@ func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB,
 	}
 	// Create a new context to be used in the EVM environment
 	blockContext := core.NewEVMBlockContext(header, s.chain, &header.Coinbase)
-	evm := vm.NewEVM(blockContext, vm.TxContext{}, state, chainConfig, vmConfig)
-
-	// Create a new context to be used in the EVM environment.
-	txContext := core.NewEVMTxContext(msg)
-	evm.Reset(txContext, state)
+	evm := vm.NewEVM(blockContext, core.NewEVMTxContext(msg), state, chainConfig, vmConfig)
 
 	// Apply the transaction to the current state (included in the env).
 	coinbaseBalanceBeforeTx := state.GetBalance(header.Coinbase)
@@ -371,13 +367,14 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 		// Apply state transition
 		txResult := new(TxResult)
 		result, err := core.ApplyMessage(evm, msg, gp)
+
+		// Modifications are committed to the state
+		// Only delete empty objects if EIP158/161 (a.k.a Spurious Dragon) is in effect
+		state.Finalise(evm.ChainConfig().IsEIP158(blockContext.BlockNumber))
+
 		if err != nil {
 			txResult.Error = fmt.Sprintf("%s (supplied gas %d)", err.Error(), msg.GasLimit)
 		} else {
-			// Modifications are committed to the state
-			// Only delete empty objects if EIP158/161 (a.k.a Spurious Dragon) is in effect
-			state.Finalise(evm.ChainConfig().IsEIP158(blockContext.BlockNumber))
-
 			txResult.Logs = state.GetLogs(txHash, header.Number.Uint64(), header.Hash())
 			if args.EnableCallTracer {
 				traceResult, err := tracer.GetResult()
