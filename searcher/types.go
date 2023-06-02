@@ -228,3 +228,20 @@ func (l *CallLog) ToLog() *types.Log {
 		Data:    l.Data,
 	}
 }
+
+type ChainDataArgs struct {
+	StateBlockNumberOrHash rpc.BlockNumberOrHash            `json:"stateBlockNumber,omitempty"`
+	Accounts               map[common.Address][]common.Hash `json:"accounts,omitempty"`
+}
+
+type ChainDataResult struct {
+	Header      *types.Header               `json:"header,omitempty"`
+	NextBaseFee *big.Int                    `json:"nextBaseFee,omitempty"`
+	Accounts    map[common.Address]*Account `json:"accounts,omitempty"`
+}
+
+type Account struct {
+	Nonce   uint64                      `json:"nonce,omitempty"`
+	Balance *big.Int                    `json:"balance,omitempty"`
+	State   map[common.Hash]common.Hash `json:"state,omitempty"`
+}
