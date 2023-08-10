@@ -53,13 +53,29 @@ type AlgoType int
 const (
 	ALGO_MEV_GETH AlgoType = iota
 	ALGO_GREEDY
+	ALGO_GREEDY_BUCKETS
 )
 
+func (a AlgoType) String() string {
+	switch a {
+	case ALGO_GREEDY:
+		return "greedy"
+	case ALGO_MEV_GETH:
+		return "mev-geth"
+	case ALGO_GREEDY_BUCKETS:
+		return "greedy-buckets"
+	default:
+		return "unsupported"
+	}
+}
+
 func AlgoTypeFlagToEnum(algoString string) (AlgoType, error) {
-	switch algoString {
-	case "mev-geth":
+	switch strings.ToLower(algoString) {
+	case ALGO_MEV_GETH.String():
 		return ALGO_MEV_GETH, nil
-	case "greedy":
+	case ALGO_GREEDY_BUCKETS.String():
+		return ALGO_GREEDY_BUCKETS, nil
+	case ALGO_GREEDY.String():
 		return ALGO_GREEDY, nil
 	default:
 		return ALGO_MEV_GETH, errors.New("algo not recognized")
@@ -68,22 +84,24 @@ func AlgoTypeFlagToEnum(algoString string) (AlgoType, error) {
 
 // Config is the configuration parameters of mining.
 type Config struct {
-	Etherbase           common.Address    `toml:",omitempty"` // Public address for block mining rewards (default = first account)
-	Notify              []string          `toml:",omitempty"` // HTTP URL list to be notified of new work packages (only useful in ethash).
-	NotifyFull          bool              `toml:",omitempty"` // Notify with pending block headers instead of work packages
-	ExtraData           hexutil.Bytes     `toml:",omitempty"` // Block extra data set by the miner
-	GasFloor            uint64            // Target gas floor for mined blocks.
-	GasCeil             uint64            // Target gas ceiling for mined blocks.
-	GasPrice            *big.Int          // Minimum gas price for mining a transaction
-	AlgoType            AlgoType          // Algorithm to use for block building
-	Recommit            time.Duration     // The time interval for miner to re-create mining work.
-	Noverify            bool              // Disable remote mining solution verification(only useful in ethash).
-	BuilderTxSigningKey *ecdsa.PrivateKey `toml:",omitempty"` // Signing key of builder coinbase to make transaction to validator
-	MaxMergedBundles    int
-	Blocklist           []common.Address `toml:",omitempty"`
-	NewPayloadTimeout   time.Duration    // The maximum time allowance for creating a new payload
-	MempoolSubsidy      *big.Int
-	FeePermil           int
+	Etherbase                common.Address    `toml:",omitempty"` // Public address for block mining rewards (default = first account)
+	Notify                   []string          `toml:",omitempty"` // HTTP URL list to be notified of new work packages (only useful in ethash).
+	NotifyFull               bool              `toml:",omitempty"` // Notify with pending block headers instead of work packages
+	ExtraData                hexutil.Bytes     `toml:",omitempty"` // Block extra data set by the miner
+	GasFloor                 uint64            // Target gas floor for mined blocks.
+	GasCeil                  uint64            // Target gas ceiling for mined blocks.
+	GasPrice                 *big.Int          // Minimum gas price for mining a transaction
+	AlgoType                 AlgoType          // Algorithm to use for block building
+	Recommit                 time.Duration     // The time interval for miner to re-create mining work.
+	Noverify                 bool              // Disable remote mining solution verification(only useful in ethash).
+	BuilderTxSigningKey      *ecdsa.PrivateKey `toml:",omitempty"` // Signing key of builder coinbase to make transaction to validator
+	MaxMergedBundles         int
+	Blocklist                []common.Address `toml:",omitempty"`
+	NewPayloadTimeout        time.Duration    // The maximum time allowance for creating a new payload
+	DiscardRevertibleTxOnErr bool             // Whether to discard revertible transactions on error
+	PriceCutoffPercent       int              // Effective gas price cutoff % used for bucketing transactions by price (only useful in greedy-buckets AlgoType)
+	MempoolSubsidy           *big.Int
+	FeePermil                int
 }
 
 // DefaultConfig contains default settings for miner.
@@ -95,8 +113,9 @@ var DefaultConfig = Config{
 	// consensus-layer usually will wait a half slot of time(6s)
 	// for payload generation. It should be enough for Geth to
 	// run 3 rounds.
-	Recommit:          2 * time.Second,
-	NewPayloadTimeout: 2 * time.Second,
+	Recommit:           2 * time.Second,
+	NewPayloadTimeout:  2 * time.Second,
+	PriceCutoffPercent: defaultPriceCutoffPercent,
 }
 
 // Miner creates blocks and searches for proof-of-work values.
@@ -289,7 +308,7 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 }
 
 // Accepts the block, time at which orders were taken, bundles which were used to build the block and all bundles that were considered for the block
-type BlockHookFn = func(*types.Block, *big.Int, time.Time, []types.SimulatedBundle, []types.SimulatedBundle)
+type BlockHookFn = func(*types.Block, *big.Int, time.Time, []types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle)
 
 // BuildPayload builds the payload according to the provided parameters.
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs) (*Payload, error) {

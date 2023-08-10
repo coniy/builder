@@ -548,7 +548,7 @@ var (
 	}
 	MinerAlgoTypeFlag = &cli.StringFlag{
 		Name:     "miner.algotype",
-		Usage:    "Block building algorithm to use [=mev-geth] (mev-geth, greedy)",
+		Usage:    "[NOTE: Deprecated, please use builder.algotype instead] Block building algorithm to use [=mev-geth] (mev-geth, greedy, greedy-buckets)",
 		Value:    "mev-geth",
 		Category: flags.MinerCategory,
 	}
@@ -581,8 +581,7 @@ var (
 	}
 	MinerBlocklistFileFlag = &cli.StringFlag{
 		Name:     "miner.blocklist",
-		Usage:    "flashbots - Path to JSON file with list of blocked addresses. Miner will ignore txs that touch mentioned addresses.",
-		Value:    "",
+		Usage:    "[NOTE: Deprecated, please use builder.blacklist] flashbots - Path to JSON file with list of blocked addresses. Miner will ignore txs that touch mentioned addresses.",
 		Category: flags.MinerCategory,
 	}
 	MinerNewPayloadTimeout = &cli.DurationFlag{
@@ -710,15 +709,42 @@ var (
 		Usage:    "Enable the builder",
 		Category: flags.BuilderCategory,
 	}
+
+	// BuilderAlgoTypeFlag replaces MinerAlgoTypeFlag to move away from deprecated miner package
+	// Note: builder.algotype was previously miner.algotype - this flag is still propagated to the miner configuration,
+	// see setMiner in cmd/utils/flags.go
+	BuilderAlgoTypeFlag = &cli.StringFlag{
+		Name:     "builder.algotype",
+		Usage:    "Block building algorithm to use [=mev-geth] (mev-geth, greedy, greedy-buckets)",
+		Category: flags.BuilderCategory,
+	}
+
+	// BuilderPriceCutoffPercentFlag replaces MinerPriceCutoffPercentFlag to move away from deprecated miner package
+	// Note: builder.price_cutoff_percent was previously miner.price_cutoff_percent -
+	// this flag is still propagated to the miner configuration, see setMiner in cmd/utils/flags.go
+	BuilderPriceCutoffPercentFlag = &cli.IntFlag{
+		Name: "builder.price_cutoff_percent",
+		Usage: "flashbots - The minimum effective gas price threshold used for bucketing transactions by price. " +
+			"For example if the top transaction in a list has an effective gas price of 1000 wei and price_cutoff_percent " +
+			"is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction " +
+			"is (1000 * 10%) = 100 wei.\n" +
+			"NOTE: This flag is only used when builder.algotype=greedy-buckets",
+		Value:    ethconfig.Defaults.Miner.PriceCutoffPercent,
+		Category: flags.BuilderCategory,
+		EnvVars:  []string{"FLASHBOTS_BUILDER_PRICE_CUTOFF_PERCENT"},
+	}
+
 	BuilderEnableValidatorChecks = &cli.BoolFlag{
 		Name:     "builder.validator_checks",
 		Usage:    "Enable the validator checks",
 		Category: flags.BuilderCategory,
 	}
 	BuilderBlockValidationBlacklistSourceFilePath = &cli.StringFlag{
-		Name:     "builder.validation_blacklist",
-		Usage:    "Path to file containing blacklisted addresses, json-encoded list of strings",
-		Value:    "",
+		Name: "builder.blacklist",
+		Usage: "Path to file containing blacklisted addresses, json-encoded list of strings. " +
+			"Builder will ignore transactions that touch mentioned addresses. This flag is also used for block validation API.\n" +
+			"NOTE: builder.validation_blacklist is deprecated and will be removed in the future in favor of builder.blacklist",
+		Aliases:  []string{"builder.validation_blacklist"},
 		Category: flags.BuilderCategory,
 	}
 	BuilderEnableLocalRelay = &cli.BoolFlag{
@@ -816,11 +842,63 @@ var (
 		Value:    "",
 		Category: flags.BuilderCategory,
 	}
+
+	// Builder rate limit settings
+
+	BuilderRateLimitDuration = &cli.StringFlag{
+		Name: "builder.rate_limit_duration",
+		Usage: "Determines rate limit of events processed by builder. For example, a value of \"500ms\" denotes that the builder processes events every 500ms. " +
+			"A duration string is a possibly signed sequence " +
+			"of decimal numbers, each with optional fraction and a unit suffix, such as \"300ms\", \"-1.5h\" or \"2h45m\"",
+		EnvVars:  []string{"FLASHBOTS_BUILDER_RATE_LIMIT_DURATION"},
+		Value:    builder.RateLimitIntervalDefault.String(),
+		Category: flags.BuilderCategory,
+	}
+
+	// BuilderRateLimitMaxBurst burst value can be thought of as a bucket of size b, initially full and refilled at rate r per second.
+	// b is defined by BuilderRateLimitMaxBurst and r is defined by BuilderRateLimitDuration.
+	// Additional details can be found on rate.Limiter documentation: https://pkg.go.dev/golang.org/x/time/rate#Limiter
+	BuilderRateLimitMaxBurst = &cli.IntFlag{
+		Name:     "builder.rate_limit_max_burst",
+		Usage:    "Determines the maximum number of burst events the builder can accommodate at any given point in time.",
+		EnvVars:  []string{"FLASHBOTS_BUILDER_RATE_LIMIT_MAX_BURST"},
+		Value:    builder.RateLimitBurstDefault,
+		Category: flags.BuilderCategory,
+	}
+
+	BuilderBlockResubmitInterval = &cli.StringFlag{
+		Name:     "builder.block_resubmit_interval",
+		Usage:    "Determines the interval at which builder will resubmit block submissions",
+		EnvVars:  []string{"FLASHBOTS_BUILDER_RATE_LIMIT_RESUBMIT_INTERVAL"},
+		Value:    builder.BlockResubmitIntervalDefault.String(),
+		Category: flags.BuilderCategory,
+	}
+
+	BuilderSubmissionOffset = &cli.DurationFlag{
+		Name: "builder.submission_offset",
+		Usage: "Determines the offset from the end of slot time that the builder will submit blocks. " +
+			"For example, if a slot is 12 seconds long, and the offset is 2 seconds, the builder will submit blocks at 10 seconds into the slot.",
+		EnvVars:  []string{"FLASHBOTS_BUILDER_SUBMISSION_OFFSET"},
+		Value:    builder.SubmissionOffsetFromEndOfSlotSecondsDefault,
+		Category: flags.BuilderCategory,
+	}
+
+	BuilderDiscardRevertibleTxOnErr = &cli.BoolFlag{
+		Name: "builder.discard_revertible_tx_on_error",
+		Usage: "When enabled, if a transaction submitted as part of a bundle in a send bundle request has error on commit, " +
+			"and its hash is specified as one that can revert in the request body, the builder will discard the hash of the failed transaction from the submitted bundle." +
+			"For additional details on the structure of the request body, see https://docs.flashbots.net/flashbots-mev-share/searchers/understanding-bundles#bundle-definition",
+		EnvVars:  []string{"FLASHBOTS_BUILDER_DISCARD_REVERTIBLE_TX_ON_ERROR"},
+		Value:    builder.DefaultConfig.DiscardRevertibleTxOnErr,
+		Category: flags.BuilderCategory,
+	}
+
 	BuilderEnableCancellations = &cli.BoolFlag{
 		Name:     "builder.cancellations",
 		Usage:    "Enable cancellations for the builder",
 		Category: flags.BuilderCategory,
 	}
+
 	// RPC settings
 	IPCDisabledFlag = &cli.BoolFlag{
 		Name:     "ipcdisable",
@@ -1615,9 +1693,11 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	}
 }
 
-// SetBuilderConfig applies node-related command line flags to the config.
+// SetBuilderConfig applies node-related command line flags to the builder config.
 func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
-	cfg.Enabled = ctx.IsSet(BuilderEnabled.Name)
+	if ctx.IsSet(BuilderEnabled.Name) {
+		cfg.Enabled = ctx.Bool(BuilderEnabled.Name)
+	}
 	cfg.EnableValidatorChecks = ctx.IsSet(BuilderEnableValidatorChecks.Name)
 	cfg.EnableLocalRelay = ctx.IsSet(BuilderEnableLocalRelay.Name)
 	cfg.SlotsInEpoch = ctx.Uint64(BuilderSlotsInEpoch.Name)
@@ -1634,8 +1714,21 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.BeaconEndpoints = strings.Split(ctx.String(BuilderBeaconEndpoints.Name), ",")
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
-	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
+	// NOTE: This flag is deprecated and will be removed in the future in favor of BuilderBlockValidationBlacklistSourceFilePath
+	if ctx.IsSet(MinerBlocklistFileFlag.Name) {
+		cfg.ValidationBlocklist = ctx.String(MinerBlocklistFileFlag.Name)
+	}
+
+	// NOTE: This flag takes precedence and will overwrite value set by MinerBlocklistFileFlag
+	if ctx.IsSet(BuilderBlockValidationBlacklistSourceFilePath.Name) {
+		cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
+	}
+	cfg.BuilderRateLimitDuration = ctx.String(BuilderRateLimitDuration.Name)
+	cfg.BuilderRateLimitMaxBurst = ctx.Int(BuilderRateLimitMaxBurst.Name)
+	cfg.BuilderSubmissionOffset = ctx.Duration(BuilderSubmissionOffset.Name)
+	cfg.DiscardRevertibleTxOnErr = ctx.Bool(BuilderDiscardRevertibleTxOnErr.Name)
 	cfg.EnableCancellations = ctx.IsSet(BuilderEnableCancellations.Name)
+	cfg.BuilderRateLimitResubmitInterval = ctx.String(BuilderBlockResubmitInterval.Name)
 }
 
 // SetNodeConfig applies node-related command line flags to the config.
@@ -1831,10 +1924,19 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	if ctx.IsSet(MinerGasPriceFlag.Name) {
 		cfg.GasPrice = flags.GlobalBig(ctx, MinerGasPriceFlag.Name)
 	}
+	// NOTE: This flag is deprecated and will be removed in the future.
 	if ctx.IsSet(MinerAlgoTypeFlag.Name) {
-		algoType, err := miner.AlgoTypeFlagToEnum(ctx.String(MinerAlgoTypeFlag.Name))
+		algoType, err := miner.AlgoTypeFlagToEnum(ctx.String(BuilderAlgoTypeFlag.Name))
 		if err != nil {
-			Fatalf("Invalid algo in --miner.algotype: %s", ctx.String(MinerAlgoTypeFlag.Name))
+			Fatalf("Invalid algo in --miner.algotype: %s", ctx.String(BuilderAlgoTypeFlag.Name))
+		}
+		cfg.AlgoType = algoType
+	}
+	// NOTE: BuilderAlgoTypeFlag takes precedence and will overwrite value set by MinerAlgoTypeFlag.
+	if ctx.IsSet(BuilderAlgoTypeFlag.Name) {
+		algoType, err := miner.AlgoTypeFlagToEnum(ctx.String(BuilderAlgoTypeFlag.Name))
+		if err != nil {
+			Fatalf("Invalid algo in --builder.algotype: %s", ctx.String(BuilderAlgoTypeFlag.Name))
 		}
 		cfg.AlgoType = algoType
 	}
@@ -1850,6 +1952,7 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 
 	cfg.MaxMergedBundles = ctx.Int(MinerMaxMergedBundlesFlag.Name)
 
+	// NOTE: This flag is deprecated and will be removed in the future in favor of BuilderBlockValidationBlacklistSourceFilePath
 	if ctx.IsSet(MinerBlocklistFileFlag.Name) {
 		bytes, err := os.ReadFile(ctx.String(MinerBlocklistFileFlag.Name))
 		if err != nil {
@@ -1860,6 +1963,22 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 			Fatalf("Failed to parse blocklist: %s", err)
 		}
 	}
+
+	// NOTE: This flag takes precedence and will overwrite value set by MinerBlocklistFileFlag
+	if ctx.IsSet(BuilderBlockValidationBlacklistSourceFilePath.Name) {
+		bytes, err := os.ReadFile(ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name))
+		if err != nil {
+			Fatalf("Failed to read blocklist file: %s", err)
+		}
+
+		if err := json.Unmarshal(bytes, &cfg.Blocklist); err != nil {
+			Fatalf("Failed to parse blocklist: %s", err)
+		}
+	}
+
+	cfg.DiscardRevertibleTxOnErr = ctx.Bool(BuilderDiscardRevertibleTxOnErr.Name)
+	cfg.PriceCutoffPercent = ctx.Int(BuilderPriceCutoffPercentFlag.Name)
+
 	if ctx.IsSet(MinerMempoolSubsidyFlag.Name) {
 		cfg.MempoolSubsidy = flags.GlobalBig(ctx, MinerMempoolSubsidyFlag.Name)
 	}

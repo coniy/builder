@@ -7,7 +7,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -18,9 +20,10 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/flashbots/go-boost-utils/bls"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
+	"github.com/flashbots/go-boost-utils/ssz"
 	"github.com/flashbots/go-utils/httplogger"
 	"github.com/gorilla/mux"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -138,9 +141,9 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 
 	var genesisForkVersion [4]byte
 	copy(genesisForkVersion[:], genesisForkVersionBytes[:4])
-	builderSigningDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeAppBuilder, genesisForkVersion, boostTypes.Root{})
+	builderSigningDomain := ssz.ComputeDomain(ssz.DomainTypeAppBuilder, genesisForkVersion, phase0.Root{})
 
-	genesisValidatorsRoot := boostTypes.Root(common.HexToHash(cfg.GenesisValidatorsRoot))
+	genesisValidatorsRoot := phase0.Root(common.HexToHash(cfg.GenesisValidatorsRoot))
 	bellatrixForkVersionBytes, err := hexutil.Decode(cfg.BellatrixForkVersion)
 	if err != nil {
 		return fmt.Errorf("invalid bellatrixForkVersion: %w", err)
@@ -148,7 +151,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 
 	var bellatrixForkVersion [4]byte
 	copy(bellatrixForkVersion[:], bellatrixForkVersionBytes[:4])
-	proposerSigningDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeBeaconProposer, bellatrixForkVersion, genesisValidatorsRoot)
+	proposerSigningDomain := ssz.ComputeDomain(ssz.DomainTypeBeaconProposer, bellatrixForkVersion, genesisValidatorsRoot)
 
 	var beaconClient IBeaconClient
 	if len(cfg.BeaconEndpoints) == 0 {
@@ -171,7 +174,10 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 			return errors.New("incorrect builder API secret key provided")
 		}
 
-		localRelay = NewLocalRelay(relaySk, beaconClient, builderSigningDomain, proposerSigningDomain, ForkData{cfg.GenesisForkVersion, cfg.BellatrixForkVersion, cfg.GenesisValidatorsRoot}, cfg.EnableValidatorChecks)
+		localRelay, err = NewLocalRelay(relaySk, beaconClient, builderSigningDomain, proposerSigningDomain, ForkData{cfg.GenesisForkVersion, cfg.BellatrixForkVersion, cfg.GenesisValidatorsRoot}, cfg.EnableValidatorChecks)
+		if err != nil {
+			return fmt.Errorf("failed to create local relay: %w", err)
+		}
 	}
 
 	var relay IRelay
@@ -211,6 +217,39 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		validator = blockvalidation.NewBlockValidationAPI(backend, accessVerifier)
 	}
 
+	// Set up builder rate limiter based on environment variables or CLI flags.
+	// Builder rate limit parameters are flags.BuilderRateLimitDuration and flags.BuilderRateLimitMaxBurst
+	duration, err := time.ParseDuration(cfg.BuilderRateLimitDuration)
+	if err != nil {
+		return fmt.Errorf("error parsing builder rate limit duration - %w", err)
+	}
+
+	// BuilderRateLimitMaxBurst is set to builder.RateLimitBurstDefault by default if not specified
+	limiter := rate.NewLimiter(rate.Every(duration), cfg.BuilderRateLimitMaxBurst)
+
+	var builderRateLimitInterval time.Duration
+	if cfg.BuilderRateLimitResubmitInterval != "" {
+		d, err := time.ParseDuration(cfg.BuilderRateLimitResubmitInterval)
+		if err != nil {
+			return fmt.Errorf("error parsing builder rate limit resubmit interval - %v", err)
+		}
+		builderRateLimitInterval = d
+	} else {
+		builderRateLimitInterval = RateLimitIntervalDefault
+	}
+
+	var submissionOffset time.Duration
+	if offset := cfg.BuilderSubmissionOffset; offset != 0 {
+		if offset < 0 {
+			return fmt.Errorf("builder submission offset must be positive")
+		} else if uint64(offset.Seconds()) > cfg.SecondsInSlot {
+			return fmt.Errorf("builder submission offset must be less than seconds in slot")
+		}
+		submissionOffset = offset
+	} else {
+		submissionOffset = SubmissionOffsetFromEndOfSlotSecondsDefault
+	}
+
 	// TODO: move to proper flags
 	var ds flashbotsextra.IDatabaseService
 	dbDSN := os.Getenv("FLASHBOTS_POSTGRES_DSN")
@@ -242,18 +281,25 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	}
 
 	builderArgs := BuilderArgs{
-		sk:                          builderSk,
-		ds:                          ds,
-		relay:                       relay,
-		builderSigningDomain:        builderSigningDomain,
-		eth:                         ethereumService,
-		dryRun:                      cfg.DryRun,
-		ignoreLatePayloadAttributes: cfg.IgnoreLatePayloadAttributes,
-		validator:                   validator,
-		beaconClient:                beaconClient,
+		sk:                            builderSk,
+		ds:                            ds,
+		dryRun:                        cfg.DryRun,
+		eth:                           ethereumService,
+		relay:                         relay,
+		builderSigningDomain:          builderSigningDomain,
+		builderBlockResubmitInterval:  builderRateLimitInterval,
+		submissionOffsetFromEndOfSlot: submissionOffset,
+		discardRevertibleTxOnErr:      cfg.DiscardRevertibleTxOnErr,
+		ignoreLatePayloadAttributes:   cfg.IgnoreLatePayloadAttributes,
+		validator:                     validator,
+		beaconClient:                  beaconClient,
+		limiter:                       limiter,
 	}
 
-	builderBackend := NewBuilder(builderArgs)
+	builderBackend, err := NewBuilder(builderArgs)
+	if err != nil {
+		return fmt.Errorf("failed to create builder backend: %w", err)
+	}
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 
 	stack.RegisterAPIs([]rpc.API{
