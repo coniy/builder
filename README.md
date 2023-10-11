@@ -136,6 +136,13 @@ $ geth --help
           blocks. For example, if a slot is 12 seconds long, and the offset is 2 seconds,
           the builder will submit blocks at 10 seconds into the slot.
           [$FLASHBOTS_BUILDER_SUBMISSION_OFFSET]
+
+    --builder.validation_blacklist value
+          Path to file containing blacklisted addresses, json-encoded list of strings
+          
+    --builder.validation_use_balance_diff (default: false)
+          Block validation API will use fee recipient balance difference for profit
+          calculation.
    
     --builder.validator_checks     (default: false)
           Enable the validator checks

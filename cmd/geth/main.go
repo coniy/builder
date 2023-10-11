@@ -164,6 +164,7 @@ var (
 		utils.BuilderPriceCutoffPercentFlag,
 		utils.BuilderEnableValidatorChecks,
 		utils.BuilderBlockValidationBlacklistSourceFilePath,
+		utils.BuilderBlockValidationUseBalanceDiff,
 		utils.BuilderEnableLocalRelay,
 		utils.BuilderSecondsInSlot,
 		utils.BuilderSlotsInEpoch,
