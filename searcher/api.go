@@ -98,7 +98,6 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 		Time:       parent.Time,
 		Difficulty: new(big.Int).Set(parent.Difficulty),
 		Coinbase:   parent.Coinbase,
-		BaseFee:    new(big.Int).Set(parent.BaseFee),
 	}
 	if s.b.ChainConfig().IsLondon(big.NewInt(parent.Number.Int64())) {
 		header.BaseFee = misc.CalcBaseFee(s.b.ChainConfig(), parent)
@@ -242,10 +241,7 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 // a past block.
 // The sender is responsible for signing the transactions and using the correct
 // nonce and ensuring validity
-func (s *API) SearcherCallBundle(ctx context.Context, args *CallBundleArgs) (*CallBundleResult, error) {
-	if args == nil {
-		return nil, errors.New("bundle missing args")
-	}
+func (s *API) SearcherCallBundle(ctx context.Context, args CallBundleArgs) (*CallBundleResult, error) {
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")
 	}
@@ -342,7 +338,7 @@ func (s *API) SearcherCallBundle(ctx context.Context, args *CallBundleArgs) (*Ca
 	return ret, nil
 }
 
-func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB, header *types.Header, tx *types.Transaction, args *CallBundleArgs) (*BundleTxResult, error) {
+func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB, header *types.Header, tx *types.Transaction, args CallBundleArgs) (*BundleTxResult, error) {
 	chainConfig := s.b.ChainConfig()
 
 	msg, err := core.TransactionToMessage(tx, types.MakeSigner(chainConfig, header.Number), header.BaseFee)
