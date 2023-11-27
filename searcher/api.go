@@ -169,6 +169,7 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 		if err != nil {
 			return nil, err
 		}
+		msg.SkipAccountChecks = callMsg.Nonce == nil
 
 		// Create a new EVM environment
 		vmConfig := vm.Config{
