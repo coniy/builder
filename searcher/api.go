@@ -182,7 +182,6 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 				WithAccessList: callMsg.EnableAccessList,
 			}
 			if cfg.WithAccessList {
-				cfg.AccessList = msg.AccessList
 				cfg.From = msg.From
 				if msg.To != nil {
 					cfg.To = *msg.To
@@ -354,7 +353,6 @@ func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB,
 			WithAccessList: args.EnableAccessList,
 		}
 		if cfg.WithAccessList {
-			cfg.AccessList = msg.AccessList
 			cfg.From = msg.From
 			if msg.To != nil {
 				cfg.To = *msg.To
