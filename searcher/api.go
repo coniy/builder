@@ -183,14 +183,18 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 				WithAccessList: callMsg.EnableAccessList,
 			}
 			if cfg.WithAccessList {
-				cfg.From = msg.From
+				cfg.AccessListExcludes = make(map[common.Address]struct{})
+				cfg.AccessListExcludes[msg.From] = struct{}{}
 				if msg.To != nil {
-					cfg.To = *msg.To
+					cfg.AccessListExcludes[*msg.To] = struct{}{}
 				} else {
-					cfg.To = crypto.CreateAddress(msg.From, msg.Nonce)
+					cfg.AccessListExcludes[crypto.CreateAddress(msg.From, msg.Nonce)] = struct{}{}
 				}
 				isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
-				cfg.PreCompiles = vm.ActivePrecompiles(s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time))
+				for _, precompile := range vm.ActivePrecompiles(s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)) {
+					cfg.AccessListExcludes[precompile] = struct{}{}
+				}
+				cfg.AccessListExcludes[header.Coinbase] = struct{}{}
 			}
 			tracer = newCombinedTracer(cfg)
 			vmConfig.Debug = true
@@ -354,14 +358,18 @@ func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB,
 			WithAccessList: args.EnableAccessList,
 		}
 		if cfg.WithAccessList {
-			cfg.From = msg.From
+			cfg.AccessListExcludes = make(map[common.Address]struct{})
+			cfg.AccessListExcludes[msg.From] = struct{}{}
 			if msg.To != nil {
-				cfg.To = *msg.To
+				cfg.AccessListExcludes[*msg.To] = struct{}{}
 			} else {
-				cfg.To = crypto.CreateAddress(msg.From, msg.Nonce)
+				cfg.AccessListExcludes[crypto.CreateAddress(msg.From, msg.Nonce)] = struct{}{}
 			}
 			isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
-			cfg.PreCompiles = vm.ActivePrecompiles(s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time))
+			for _, precompile := range vm.ActivePrecompiles(chainConfig.Rules(header.Number, isPostMerge, header.Time)) {
+				cfg.AccessListExcludes[precompile] = struct{}{}
+			}
+			cfg.AccessListExcludes[header.Coinbase] = struct{}{}
 		}
 		tracer = newCombinedTracer(cfg)
 		vmConfig.Debug = true

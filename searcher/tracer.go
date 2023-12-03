@@ -81,19 +81,16 @@ type combinedTracer struct {
 	callstack []*CallFrame
 	config    combinedTracerConfig
 	gasLimit  uint64
-	interrupt atomic.Bool                 // Atomic flag to signal execution interruption
-	reason    error                       // Textual reason for the interruption
-	excl      map[common.Address]struct{} // Set of account to exclude from the list
-	list      accessList                  // Set of accounts and storage slots touched
+	interrupt atomic.Bool // Atomic flag to signal execution interruption
+	reason    error       // Textual reason for the interruption
+	list      accessList  // Set of accounts and storage slots touched
 }
 
 type combinedTracerConfig struct {
-	WithCall       bool
-	WithLog        bool
-	WithAccessList bool
-	From           common.Address
-	To             common.Address
-	PreCompiles    []common.Address
+	WithCall           bool
+	WithLog            bool
+	WithAccessList     bool
+	AccessListExcludes map[common.Address]struct{}
 }
 
 // newCallTracer returns a native go tracer which tracks
@@ -106,13 +103,6 @@ func newCombinedTracer(config combinedTracerConfig) *combinedTracer {
 		callstack: []*CallFrame{{}},
 	}
 	if config.WithAccessList {
-		tracer.excl = map[common.Address]struct{}{
-			config.From: {},
-			config.To:   {},
-		}
-		for _, addr := range config.PreCompiles {
-			tracer.excl[addr] = struct{}{}
-		}
 		tracer.list = newAccessList()
 	}
 	return tracer
@@ -185,20 +175,20 @@ func (t *combinedTracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64,
 		stackLen := len(stackData)
 		if (op == vm.SLOAD || op == vm.SSTORE) && stackLen >= 1 {
 			addr := scope.Contract.Address()
-			if _, ok := t.excl[addr]; !ok {
+			if _, ok := t.config.AccessListExcludes[addr]; !ok {
 				slot := common.Hash(stackData[stackLen-1].Bytes32())
 				t.list.addSlot(addr, slot)
 			}
 		}
 		if (op == vm.BALANCE || op == vm.EXTCODESIZE || op == vm.EXTCODECOPY || op == vm.EXTCODEHASH || op == vm.SELFDESTRUCT) && stackLen >= 1 {
 			addr := common.Address(stackData[stackLen-1].Bytes20())
-			if _, ok := t.excl[addr]; !ok {
+			if _, ok := t.config.AccessListExcludes[addr]; !ok {
 				t.list.addAddress(addr)
 			}
 		}
 		if (op == vm.CALL || op == vm.STATICCALL || op == vm.DELEGATECALL || op == vm.CALLCODE) && stackLen >= 5 {
 			addr := common.Address(stackData[stackLen-2].Bytes20())
-			if _, ok := t.excl[addr]; !ok {
+			if _, ok := t.config.AccessListExcludes[addr]; !ok {
 				t.list.addAddress(addr)
 			}
 		}
