@@ -192,8 +192,8 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 		// Copy a snapshot of the current stack state to a new buffer
 		var stck []uint256.Int
 		if !t.config.WithStack {
-			stck = make([]uint256.Int, len(scope.Stack.Data()))
-			for i, item := range scope.Stack.Data() {
+			stck = make([]uint256.Int, stackLen)
+			for i, item := range stackData {
 				stck[i] = item
 			}
 		}
