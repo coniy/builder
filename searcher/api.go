@@ -87,7 +87,7 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 	}
 
 	// override state
-	if err := args.StateOverrides.Apply(db); err != nil {
+	if err = args.StateOverrides.Apply(db); err != nil {
 		return nil, err
 	}
 
@@ -99,7 +99,7 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 		Difficulty: new(big.Int).Set(parent.Difficulty),
 		Coinbase:   parent.Coinbase,
 	}
-	if s.b.ChainConfig().IsLondon(big.NewInt(parent.Number.Int64())) {
+	if s.b.ChainConfig().IsLondon(parent.Number) {
 		header.BaseFee = misc.CalcBaseFee(s.b.ChainConfig(), parent)
 	}
 
@@ -175,9 +175,9 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 		vmConfig := vm.Config{
 			NoBaseFee: !args.EnableBaseFee,
 		}
-		var tracer *combinedTracer
+		var tracer *Tracer
 		if args.EnableCallTracer || callMsg.EnableAccessList {
-			cfg := combinedTracerConfig{
+			cfg := TracerConfig{
 				WithCall:       args.EnableCallTracer,
 				WithLog:        args.EnableCallTracer,
 				WithAccessList: callMsg.EnableAccessList,
@@ -196,7 +196,7 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 				}
 				cfg.AccessListExcludes[header.Coinbase] = struct{}{}
 			}
-			tracer = newCombinedTracer(cfg)
+			tracer = NewCombinedTracer(cfg)
 			vmConfig.Debug = true
 			vmConfig.Tracer = tracer
 		}
@@ -349,10 +349,10 @@ func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB,
 	if err != nil {
 		return nil, err
 	}
-	var tracer *combinedTracer
+	var tracer *Tracer
 	vmConfig := *s.chain.GetVMConfig()
 	if args.EnableCallTracer || args.EnableAccessList {
-		cfg := combinedTracerConfig{
+		cfg := TracerConfig{
 			WithCall:       args.EnableCallTracer,
 			WithLog:        args.EnableCallTracer,
 			WithAccessList: args.EnableAccessList,
@@ -371,7 +371,7 @@ func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB,
 			}
 			cfg.AccessListExcludes[header.Coinbase] = struct{}{}
 		}
-		tracer = newCombinedTracer(cfg)
+		tracer = NewCombinedTracer(cfg)
 		vmConfig.Debug = true
 		vmConfig.Tracer = tracer
 	}

@@ -195,9 +195,9 @@ type CallFrame struct {
 	Type         CallType       `json:"type,omitempty"`
 	From         common.Address `json:"from,omitempty"`
 	To           common.Address `json:"to,omitempty"`
-	Value        *hexutil.Big   `json:"value,omitempty"`
-	Gas          hexutil.Uint64 `json:"gas,omitempty"`
-	GasUsed      hexutil.Uint64 `json:"gasUsed,omitempty"`
+	Value        *big.Int       `json:"value,omitempty"`
+	Gas          uint64         `json:"gas,omitempty"`
+	GasUsed      uint64         `json:"gasUsed,omitempty"`
 	Error        string         `json:"error,omitempty"`
 	RevertReason string         `json:"revertReason,omitempty"`
 	Input        hexutil.Bytes  `json:"input,omitempty"`
