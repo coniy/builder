@@ -68,7 +68,7 @@ func (b *greedyMultiSnapBuilder) buildBlock(simBundles []types.SimulatedBundle, 
 		}
 
 		if tx := order.Tx(); tx != nil {
-			if tx.Resolve() == nil {
+			if tx.Resolve() == nil || tx.Tx == nil {
 				log.Trace("Ignoring evicted transaction", "hash", tx.Hash)
 				orders.Pop()
 				continue
