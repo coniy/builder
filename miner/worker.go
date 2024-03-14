@@ -1553,10 +1553,12 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 			totalSbundles++
 		}
 
-		log.Info("Block finalized and assembled",
-			"height", block.Number().String(), "blockProfit", ethIntToFloat(uint256.MustFromBig(profit)),
-			"txs", len(env.txs), "bundles", len(blockBundles), "okSbundles", okSbundles, "totalSbundles", totalSbundles,
-			"gasUsed", block.GasUsed(), "time", time.Since(start))
+		if !params.noTxs {
+			log.Info("Block finalized and assembled",
+				"height", block.Number().String(), "blockProfit", ethIntToFloat(uint256.MustFromBig(profit)),
+				"txs", len(env.txs), "bundles", len(blockBundles), "okSbundles", okSbundles, "totalSbundles", totalSbundles,
+				"gasUsed", block.GasUsed(), "time", time.Since(start))
+		}
 		if metrics.EnabledBuilder {
 			buildBlockTimer.Update(time.Since(start))
 			blockProfitHistogram.Update(profit.Int64())
