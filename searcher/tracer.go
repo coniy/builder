@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/holiman/uint256"
 	"math/big"
 	"sync/atomic"
@@ -260,7 +261,13 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 					topics[i] = topic.Bytes32()
 				}
 
-				data := scope.Memory.GetCopy(int64(mStart.Uint64()), int64(mSize.Uint64()))
+				data, err := tracers.GetMemoryCopyPadded(scope.Memory, int64(mStart.Uint64()), int64(mSize.Uint64()))
+				if err != nil {
+					// mSize was unrealistically large
+					log.Warn("failed to copy CREATE2 input", "err", err, "tracer", "callTracer", "offset", mStart, "size", mSize)
+					return
+				}
+
 				lastFrame := t.callstack[len(t.callstack)-1]
 				lastFrame.Logs = append(lastFrame.Logs, &CallLog{
 					Address: scope.Contract.Address(),

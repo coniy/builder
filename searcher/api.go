@@ -9,7 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/consensus/misc"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -46,21 +46,20 @@ func (s *API) SearcherChainData(ctx context.Context, args ChainDataArgs) (*Chain
 	}
 	res := &ChainDataResult{
 		Header:      parent,
-		NextBaseFee: misc.CalcBaseFee(s.chain.Config(), parent),
+		NextBaseFee: eip1559.CalcBaseFee(s.b.ChainConfig(), parent),
 	}
 	if len(args.Accounts) > 0 {
 		res.Accounts = make(map[common.Address]*Account)
 	}
 	for account, keys := range args.Accounts {
-		obj := db.GetOrNewStateObject(account)
 		res.Accounts[account] = &Account{
-			Balance: obj.Balance(),
-			Nonce:   obj.Nonce(),
+			Balance: db.GetBalance(account).ToBig(),
+			Nonce:   db.GetNonce(account),
 		}
 		if len(keys) > 0 {
 			res.Accounts[account].State = make(map[common.Hash]common.Hash)
 			for _, key := range keys {
-				res.Accounts[account].State[key] = obj.GetState(db.Database(), key)
+				res.Accounts[account].State[key] = db.GetState(account, key)
 			}
 		}
 	}
@@ -100,7 +99,7 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 		Coinbase:   parent.Coinbase,
 	}
 	if s.b.ChainConfig().IsLondon(parent.Number) {
-		header.BaseFee = misc.CalcBaseFee(s.b.ChainConfig(), parent)
+		header.BaseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
 	}
 
 	// header overrides
@@ -197,7 +196,6 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 				cfg.AccessListExcludes[header.Coinbase] = struct{}{}
 			}
 			tracer = NewCombinedTracer(cfg)
-			vmConfig.Debug = true
 			vmConfig.Tracer = tracer
 		}
 		evm := vm.NewEVM(blockContext, core.NewEVMTxContext(msg), db, s.chain.Config(), vmConfig)
@@ -286,8 +284,8 @@ func (s *API) SearcherCallBundle(ctx context.Context, args CallBundleArgs) (*Cal
 		Difficulty: new(big.Int).Set(parent.Difficulty),
 		Coinbase:   parent.Coinbase,
 	}
-	if s.b.ChainConfig().IsLondon(big.NewInt(parent.Number.Int64())) {
-		header.BaseFee = misc.CalcBaseFee(s.b.ChainConfig(), parent)
+	if s.b.ChainConfig().IsLondon(parent.Number) {
+		header.BaseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
 	}
 
 	// header overrides
@@ -311,7 +309,7 @@ func (s *API) SearcherCallBundle(ctx context.Context, args CallBundleArgs) (*Cal
 	defer cancel()
 
 	ret := &CallBundleResult{
-		CoinbaseDiff:      db.GetBalance(header.Coinbase),
+		CoinbaseDiff:      db.GetBalance(header.Coinbase).ToBig(),
 		GasFees:           new(big.Int),
 		EthSentToCoinbase: new(big.Int),
 		StateBlockNumber:  parent.Number.Int64(),
@@ -334,7 +332,7 @@ func (s *API) SearcherCallBundle(ctx context.Context, args CallBundleArgs) (*Cal
 		ret.Txs = append(ret.Txs, txResult)
 	}
 
-	ret.CoinbaseDiff = new(big.Int).Sub(db.GetBalance(header.Coinbase), ret.CoinbaseDiff)
+	ret.CoinbaseDiff = new(big.Int).Sub(db.GetBalance(header.Coinbase).ToBig(), ret.CoinbaseDiff)
 	ret.EthSentToCoinbase = new(big.Int).Sub(ret.CoinbaseDiff, ret.GasFees)
 	ret.BundleGasPrice = new(big.Int).Div(ret.CoinbaseDiff, big.NewInt(int64(ret.TotalGasUsed)))
 	ret.BundleHash = common.BytesToHash(bundleHash.Sum(nil))
@@ -345,7 +343,7 @@ func (s *API) SearcherCallBundle(ctx context.Context, args CallBundleArgs) (*Cal
 func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB, header *types.Header, tx *types.Transaction, args CallBundleArgs) (*BundleTxResult, error) {
 	chainConfig := s.b.ChainConfig()
 
-	msg, err := core.TransactionToMessage(tx, types.MakeSigner(chainConfig, header.Number), header.BaseFee)
+	msg, err := core.TransactionToMessage(tx, types.MakeSigner(chainConfig, header.Number, header.Time), header.BaseFee)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +370,6 @@ func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB,
 			cfg.AccessListExcludes[header.Coinbase] = struct{}{}
 		}
 		tracer = NewCombinedTracer(cfg)
-		vmConfig.Debug = true
 		vmConfig.Tracer = tracer
 	}
 	// Create a new context to be used in the EVM environment
@@ -423,7 +420,7 @@ func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB,
 		GasUsed:      receipt.GasUsed,
 		ReturnData:   result.ReturnData,
 		Logs:         receipt.Logs,
-		CoinbaseDiff: new(big.Int).Sub(state.GetBalance(header.Coinbase), coinbaseBalanceBeforeTx),
+		CoinbaseDiff: new(big.Int).Sub(state.GetBalance(header.Coinbase).ToBig(), coinbaseBalanceBeforeTx.ToBig()),
 		CallMsg: &CallMsg{
 			From:       msg.From,
 			To:         msg.To,
