@@ -168,7 +168,10 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 		if err != nil {
 			return nil, err
 		}
-		msg.SkipAccountChecks = callMsg.Nonce == nil
+		if callMsg.Nonce != nil {
+			msg.Nonce = *callMsg.Nonce
+			msg.SkipAccountChecks = false
+		}
 
 		// Create a new EVM environment
 		vmConfig := vm.Config{
@@ -187,7 +190,7 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 				if msg.To != nil {
 					cfg.AccessListExcludes[*msg.To] = struct{}{}
 				} else {
-					cfg.AccessListExcludes[crypto.CreateAddress(msg.From, msg.Nonce)] = struct{}{}
+					cfg.AccessListExcludes[crypto.CreateAddress(msg.From, db.GetNonce(msg.From))] = struct{}{}
 				}
 				isPostMerge := header.Difficulty.Cmp(common.Big0) == 0
 				for _, precompile := range vm.ActivePrecompiles(s.b.ChainConfig().Rules(header.Number, isPostMerge, header.Time)) {
