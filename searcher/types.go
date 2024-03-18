@@ -6,6 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/holiman/uint256"
 	"math/big"
@@ -70,36 +71,40 @@ type BlockOverrides struct {
 	Coinbase    *common.Address `json:"coinbase,omitempty"`
 	Random      *common.Hash    `json:"random,omitempty"`
 	BaseFee     *big.Int        `json:"baseFee,omitempty"`
+	BlobBaseFee *big.Int        `json:"blobBaseFee,omitempty"`
 }
 
 // Apply overrides the given header fields into the given block context.
-func (diff *BlockOverrides) Apply(header *types.Header) {
+func (diff *BlockOverrides) Apply(blockCtx *vm.BlockContext) {
 	if diff == nil {
 		return
 	}
 	if diff.Number != nil {
-		header.Number = diff.Number
+		blockCtx.BlockNumber = diff.Number
 	}
 	if diff.NumberShift != 0 {
-		header.Number.Add(header.Number, big.NewInt(diff.NumberShift))
+		blockCtx.BlockNumber = new(big.Int).Add(blockCtx.BlockNumber, big.NewInt(diff.NumberShift))
 	}
 	if diff.Difficulty != nil {
-		header.Difficulty = diff.Difficulty
+		blockCtx.Difficulty = diff.Difficulty
 	}
 	if diff.Time != nil {
-		header.Time = *diff.Time
+		blockCtx.Time = *diff.Time
 	}
 	if diff.TimeShift != 0 {
-		header.Time += uint64(diff.TimeShift)
+		blockCtx.Time += uint64(diff.TimeShift)
 	}
 	if diff.GasLimit != nil {
-		header.GasLimit = *diff.GasLimit
+		blockCtx.GasLimit = *diff.GasLimit
 	}
 	if diff.Coinbase != nil {
-		header.Coinbase = *diff.Coinbase
+		blockCtx.Coinbase = *diff.Coinbase
 	}
 	if diff.BaseFee != nil {
-		header.BaseFee = diff.BaseFee
+		blockCtx.BaseFee = diff.BaseFee
+	}
+	if diff.BlobBaseFee != nil {
+		blockCtx.BlobBaseFee = diff.BlobBaseFee
 	}
 }
 
