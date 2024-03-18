@@ -100,6 +100,9 @@ func (diff *BlockOverrides) Apply(blockCtx *vm.BlockContext) {
 	if diff.Coinbase != nil {
 		blockCtx.Coinbase = *diff.Coinbase
 	}
+	if diff.Random != nil {
+		blockCtx.Random = diff.Random
+	}
 	if diff.BaseFee != nil {
 		blockCtx.BaseFee = diff.BaseFee
 	}
