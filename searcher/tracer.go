@@ -21,11 +21,8 @@ func (f *CallFrame) processOutput(output []byte, err error) {
 		return
 	}
 	f.Error = err.Error()
-	if !errors.Is(err, vm.ErrExecutionReverted) || len(output) == 0 {
-		return
-	}
 	f.Output = output
-	if len(output) < 4 {
+	if !errors.Is(err, vm.ErrExecutionReverted) || len(output) < 4 {
 		return
 	}
 	if unpacked, err := abi.UnpackRevert(output); err == nil {
@@ -98,8 +95,6 @@ type TracerConfig struct {
 	WithOpcode         bool                        `json:"withOpcode,omitempty"`
 	WithMemory         bool                        `json:"withMemory,omitempty"`
 	WithStack          bool                        `json:"withStack,omitempty"`
-	WithStorage        bool                        `json:"withStorage,omitempty"`
-	WithReturnData     bool                        `json:"withReturnData,omitempty"`
 }
 
 type Operation struct {
@@ -201,7 +196,7 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 
 		// Copy a snapshot of the current storage to a new container
 		var storage map[common.Hash]common.Hash
-		if !t.config.WithStorage && (op == vm.SLOAD || op == vm.SSTORE) {
+		if op == vm.SLOAD || op == vm.SSTORE {
 			// capture SLOAD opcodes and record the read entry in the local storage
 			if op == vm.SLOAD && stackLen >= 1 {
 				slot := common.Hash(stackData[stackLen-1].Bytes32())
@@ -220,10 +215,8 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 		}
 
 		var rdata []byte
-		if t.config.WithReturnData {
-			rdata = make([]byte, len(rData))
-			copy(rdata, rData)
-		}
+		rdata = make([]byte, len(rData))
+		copy(rdata, rData)
 
 		var errString string
 		if err != nil {

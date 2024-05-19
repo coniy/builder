@@ -20,7 +20,7 @@ type OverrideAccount struct {
 	StateDiff *map[common.Hash]common.Hash `json:"stateDiff,omitempty"`
 }
 
-type StateOverride map[common.Address]OverrideAccount
+type StateOverride map[common.Address]*OverrideAccount
 
 // Apply overrides the fields of specified accounts into the given state.
 func (diff *StateOverride) Apply(state *state.StateDB) error {
@@ -232,6 +232,9 @@ type CallLog struct {
 	Address common.Address `json:"address,omitempty"`
 	Topics  []common.Hash  `json:"topics,omitempty"`
 	Data    hexutil.Bytes  `json:"data,omitempty"`
+	// Position of the log relative to subcalls within the same trace
+	// See https://github.com/ethereum/go-ethereum/pull/28389 for details
+	Position int `json:"position,omitempty"`
 }
 
 func (l *CallLog) ToLog() *types.Log {
