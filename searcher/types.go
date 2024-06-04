@@ -20,10 +20,10 @@ type OverrideAccount struct {
 	StateDiff *map[common.Hash]common.Hash `json:"stateDiff,omitempty"`
 }
 
-type StateOverride map[common.Address]*OverrideAccount
+type StateOverrides map[common.Address]*OverrideAccount
 
 // Apply overrides the fields of specified accounts into the given state.
-func (diff *StateOverride) Apply(state *state.StateDB) error {
+func (diff *StateOverrides) Apply(state *state.StateDB) error {
 	if diff == nil {
 		return nil
 	}
@@ -123,8 +123,7 @@ type CallMsg struct {
 	Data      hexutil.Bytes   `json:"data,omitempty"`
 
 	// Introduced by AccessListTxType transaction.
-	AccessList       types.AccessList `json:"accessList,omitempty"`
-	EnableAccessList bool             `json:"enableAccessList,omitempty"`
+	AccessList types.AccessList `json:"accessList,omitempty"`
 }
 
 type CallArgs struct {
@@ -132,9 +131,11 @@ type CallArgs struct {
 	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber,omitempty"`
 	Timeout                *int64                `json:"timeout,omitempty"`
 	EnableBaseFee          bool                  `json:"enableBaseFee,omitempty"`
-	EnableCallTracer       bool                  `json:"enableCallTracer,omitempty"`
+	EnableTracer           bool                  `json:"enableTracer,omitempty"`
+	EnableAccessList       bool                  `json:"enableAccessList,omitempty"`
+	EnableStorage          bool                  `json:"enableStorage,omitempty"`
 	BlockOverrides         *BlockOverrides       `json:"blockOverrides,omitempty"`
-	StateOverrides         *StateOverride        `json:"stateOverrides,omitempty"`
+	StateOverrides         *StateOverrides       `json:"stateOverrides,omitempty"`
 }
 
 type CallResult struct {
@@ -148,18 +149,19 @@ type TxResult struct {
 	Error      string           `json:"error,omitempty"`
 	ReturnData hexutil.Bytes    `json:"returnData,omitempty"`
 	Logs       []*types.Log     `json:"logs,omitempty"`
-	CallFrame  *CallFrame       `json:"callFrame,omitempty"`
 	AccessList types.AccessList `json:"accessList,omitempty"`
+	Frame      *Frame           `json:"frame,omitempty"`
 }
 
 type CallBundleArgs struct {
 	Txs                    []hexutil.Bytes       `json:"txs,omitempty"`
 	StateBlockNumberOrHash rpc.BlockNumberOrHash `json:"stateBlockNumber,omitempty"`
 	Timeout                *int64                `json:"timeout,omitempty"`
-	EnableCallTracer       bool                  `json:"enableCallTracer,omitempty"`
+	EnableTracer           bool                  `json:"enableTracer,omitempty"`
 	EnableAccessList       bool                  `json:"enableAccessList,omitempty"`
+	EnableStorage          bool                  `json:"enableStorage,omitempty"`
 	BlockOverrides         *BlockOverrides       `json:"blockOverrides,omitempty"`
-	StateOverrides         *StateOverride        `json:"stateOverrides,omitempty"`
+	StateOverrides         *StateOverrides       `json:"stateOverrides,omitempty"`
 }
 
 type CallBundleResult struct {
@@ -184,24 +186,19 @@ type BundleTxResult struct {
 	EthSentToCoinbase *big.Int         `json:"ethSentToCoinbase,omitempty"`
 	GasPrice          *big.Int         `json:"gasPrice,omitempty"`
 	CallMsg           *CallMsg         `json:"callMsg,omitempty"`
-	CallFrame         *CallFrame       `json:"callFrame,omitempty"`
 	AccessList        types.AccessList `json:"accessList,omitempty"`
+	Frame             *Frame           `json:"frame,omitempty"`
 }
 
-type CallType string
+type Frame struct {
+	Opcode vm.OpCode `json:"opcode,omitempty"`
+	Value  any       `json:"value,omitempty"`
+	Subs   []*Frame  `json:"subs,omitempty"`
 
-const (
-	CallTypeCall         = "CALL"
-	CallTypeCallCode     = "CALLCODE"
-	CallTypeStaticCall   = "STATICCALL"
-	CallTypeCreate       = "CREATE"
-	CallTypeCreate2      = "CREATE2"
-	CallTypeSelfDestruct = "SELFDESTRUCT"
-	CallTypeDelegateCall = "DELEGATECALL"
-)
+	Parent *Frame `json:"-"`
+}
 
-type CallFrame struct {
-	Type         CallType       `json:"type,omitempty"`
+type FrameCall struct {
 	From         common.Address `json:"from,omitempty"`
 	To           common.Address `json:"to,omitempty"`
 	Value        *big.Int       `json:"value,omitempty"`
@@ -211,33 +208,28 @@ type CallFrame struct {
 	RevertReason string         `json:"revertReason,omitempty"`
 	Input        hexutil.Bytes  `json:"input,omitempty"`
 	Output       hexutil.Bytes  `json:"output,omitempty"`
-	Calls        []*CallFrame   `json:"calls,omitempty"`
-	Logs         []*CallLog     `json:"logs,omitempty"`
-
-	Parent *CallFrame `json:"-"`
 }
 
-func (f *CallFrame) ToLogs() []*types.Log {
+func (f *Frame) Logs() []*types.Log {
 	if f == nil {
 		return nil
 	}
-	logs := make([]*types.Log, len(f.Logs))
-	for i, l := range f.Logs {
-		logs[i] = l.ToLog()
+	var logs []*types.Log
+	for _, sub := range f.Subs {
+		if l, ok := sub.Value.(*FrameLog); ok && l != nil {
+			logs = append(logs, l.ToLog())
+		}
 	}
 	return logs
 }
 
-type CallLog struct {
+type FrameLog struct {
 	Address common.Address `json:"address,omitempty"`
 	Topics  []common.Hash  `json:"topics,omitempty"`
 	Data    hexutil.Bytes  `json:"data,omitempty"`
-	// Position of the log relative to subcalls within the same trace
-	// See https://github.com/ethereum/go-ethereum/pull/28389 for details
-	Position int `json:"position,omitempty"`
 }
 
-func (l *CallLog) ToLog() *types.Log {
+func (l *FrameLog) ToLog() *types.Log {
 	if l == nil {
 		return nil
 	}
@@ -246,6 +238,11 @@ func (l *CallLog) ToLog() *types.Log {
 		Topics:  l.Topics,
 		Data:    l.Data,
 	}
+}
+
+type FrameStorage struct {
+	Key   common.Hash `json:"key,omitempty"`
+	Value common.Hash `json:"value,omitempty"`
 }
 
 type ChainDataArgs struct {

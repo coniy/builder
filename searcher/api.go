@@ -179,11 +179,11 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 			NoBaseFee: !args.EnableBaseFee,
 		}
 		var tracer *Tracer
-		if args.EnableCallTracer || callMsg.EnableAccessList {
+		if args.EnableTracer || args.EnableAccessList {
 			cfg := TracerConfig{
-				WithCall:       args.EnableCallTracer,
-				WithLog:        args.EnableCallTracer,
-				WithAccessList: callMsg.EnableAccessList,
+				WithFrame:      args.EnableTracer,
+				WithStorage:    args.EnableStorage,
+				WithAccessList: args.EnableAccessList,
 			}
 			if cfg.WithAccessList {
 				cfg.AccessListExcludes = make(map[common.Address]struct{})
@@ -199,7 +199,7 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 				}
 				cfg.AccessListExcludes[blockCtx.Coinbase] = struct{}{}
 			}
-			tracer = NewCombinedTracer(cfg)
+			tracer = NewTracer(cfg)
 			vmConfig.Tracer = tracer
 		}
 		evm := vm.NewEVM(blockCtx, core.NewEVMTxContext(msg), db, s.chain.Config(), vmConfig)
@@ -216,10 +216,10 @@ func (s *API) SearcherCall(ctx context.Context, args CallArgs) (*CallResult, err
 			txResult.Error = fmt.Sprintf("%s (supplied gas %d)", err.Error(), msg.GasLimit)
 		} else {
 			txResult.Logs = db.GetLogs(txHash, blockCtx.BlockNumber.Uint64(), common.Hash{})
-			if args.EnableCallTracer {
-				txResult.CallFrame = tracer.CallFrame()
+			if args.EnableTracer {
+				txResult.Frame = tracer.Frame()
 			}
-			if callMsg.EnableAccessList {
+			if args.EnableAccessList {
 				txResult.AccessList = tracer.AccessList()
 			}
 			if result.Err != nil {
@@ -348,7 +348,7 @@ func (s *API) SearcherCallBundle(ctx context.Context, args CallBundleArgs) (*Cal
 	return ret, nil
 }
 
-func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB, blockCtx vm.BlockContext, tx *types.Transaction, args CallBundleArgs) (*BundleTxResult, error) {
+func (s *API) applyTransactionWithResult(gp *core.GasPool, db *state.StateDB, blockCtx vm.BlockContext, tx *types.Transaction, args CallBundleArgs) (*BundleTxResult, error) {
 	chainConfig := s.b.ChainConfig()
 
 	msg, err := core.TransactionToMessage(tx, types.MakeSigner(chainConfig, blockCtx.BlockNumber, blockCtx.Time), blockCtx.BaseFee)
@@ -357,10 +357,10 @@ func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB,
 	}
 	var tracer *Tracer
 	vmConfig := *s.chain.GetVMConfig()
-	if args.EnableCallTracer || args.EnableAccessList {
+	if args.EnableTracer || args.EnableAccessList {
 		cfg := TracerConfig{
-			WithCall:       args.EnableCallTracer,
-			WithLog:        args.EnableCallTracer,
+			WithFrame:      args.EnableTracer,
+			WithStorage:    args.EnableStorage,
 			WithAccessList: args.EnableAccessList,
 		}
 		if cfg.WithAccessList {
@@ -377,14 +377,14 @@ func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB,
 			}
 			cfg.AccessListExcludes[blockCtx.Coinbase] = struct{}{}
 		}
-		tracer = NewCombinedTracer(cfg)
+		tracer = NewTracer(cfg)
 		vmConfig.Tracer = tracer
 	}
 	// Create a new context to be used in the EVM environment
-	evm := vm.NewEVM(blockCtx, core.NewEVMTxContext(msg), state, chainConfig, vmConfig)
+	evm := vm.NewEVM(blockCtx, core.NewEVMTxContext(msg), db, chainConfig, vmConfig)
 
 	// Apply the transaction to the current state (included in the env).
-	coinbaseBalanceBeforeTx := state.GetBalance(blockCtx.Coinbase)
+	coinbaseBalanceBeforeTx := db.GetBalance(blockCtx.Coinbase)
 	result, err := core.ApplyMessage(evm, msg, gp)
 	if err != nil {
 		return nil, err
@@ -395,8 +395,8 @@ func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB,
 		TxHash:       tx.Hash(),
 		GasUsed:      result.UsedGas,
 		ReturnData:   result.ReturnData,
-		Logs:         state.GetLogs(tx.Hash(), blockCtx.BlockNumber.Uint64(), common.Hash{}),
-		CoinbaseDiff: new(big.Int).Sub(state.GetBalance(blockCtx.Coinbase).ToBig(), coinbaseBalanceBeforeTx.ToBig()),
+		Logs:         db.GetLogs(tx.Hash(), blockCtx.BlockNumber.Uint64(), common.Hash{}),
+		CoinbaseDiff: new(big.Int).Sub(db.GetBalance(blockCtx.Coinbase).ToBig(), coinbaseBalanceBeforeTx.ToBig()),
 		CallMsg: &CallMsg{
 			From:       msg.From,
 			To:         msg.To,
@@ -410,8 +410,8 @@ func (s *API) applyTransactionWithResult(gp *core.GasPool, state *state.StateDB,
 			AccessList: tx.AccessList(),
 		},
 	}
-	if args.EnableCallTracer {
-		txResult.CallFrame = tracer.CallFrame()
+	if args.EnableTracer {
+		txResult.Frame = tracer.Frame()
 	}
 	if args.EnableAccessList {
 		txResult.AccessList = tracer.AccessList()
