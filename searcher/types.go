@@ -1,6 +1,7 @@
 package searcher
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -192,10 +193,47 @@ type BundleTxResult struct {
 
 type Frame struct {
 	Opcode vm.OpCode `json:"opcode,omitempty"`
-	Value  any       `json:"value,omitempty"`
+	Data   any       `json:"data,omitempty"`
 	Subs   []*Frame  `json:"subs,omitempty"`
 
 	Parent *Frame `json:"-"`
+}
+
+func (f *Frame) UnmarshalJSON(data []byte) error {
+	type Alias struct {
+		Opcode vm.OpCode       `json:"opcode,omitempty"`
+		Data   json.RawMessage `json:"data,omitempty"`
+		Subs   []*Frame        `json:"subs,omitempty"`
+	}
+	var alias Alias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+	f.Opcode = alias.Opcode
+	f.Subs = alias.Subs
+	switch f.Opcode {
+	case vm.CALL, vm.STATICCALL, vm.DELEGATECALL, vm.CREATE, vm.CREATE2, vm.SELFDESTRUCT:
+		call := new(FrameCall)
+		if err := json.Unmarshal(alias.Data, call); err != nil {
+			return err
+		}
+		f.Data = call
+	case vm.LOG0, vm.LOG1, vm.LOG2, vm.LOG3, vm.LOG4:
+		log := new(FrameLog)
+		if err := json.Unmarshal(alias.Data, log); err != nil {
+			return err
+		}
+		f.Data = log
+	case vm.SLOAD, vm.SSTORE, vm.TLOAD, vm.TSTORE:
+		storage := new(FrameStorage)
+		if err := json.Unmarshal(alias.Data, storage); err != nil {
+			return err
+		}
+		f.Data = storage
+	default:
+		return fmt.Errorf("unsupported opcode %v", f.Opcode.String())
+	}
+	return nil
 }
 
 type FrameCall struct {
@@ -216,7 +254,7 @@ func (f *Frame) Logs() []*types.Log {
 	}
 	var logs []*types.Log
 	for _, sub := range f.Subs {
-		if l, ok := sub.Value.(*FrameLog); ok && l != nil {
+		if l, ok := sub.Data.(*FrameLog); ok && l != nil {
 			logs = append(logs, l.ToLog())
 		}
 	}

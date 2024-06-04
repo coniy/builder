@@ -97,7 +97,7 @@ func (t *Tracer) CaptureTxStart(gasLimit uint64) {
 func (t *Tracer) CaptureTxEnd(restGas uint64) {
 	t.usedGas = t.gasLimit - restGas
 	if t.config.WithFrame {
-		call, ok := t.rootFrame.Value.(*FrameCall)
+		call, ok := t.rootFrame.Data.(*FrameCall)
 		if ok && call != nil {
 			call.GasUsed = t.usedGas
 		}
@@ -113,7 +113,7 @@ func (t *Tracer) CaptureStart(env *vm.EVM, from common.Address, to common.Addres
 		}
 		t.rootFrame = &Frame{
 			Opcode: vm.CALL,
-			Value: &FrameCall{
+			Data: &FrameCall{
 				From:  from,
 				To:    to,
 				Value: value,
@@ -146,7 +146,7 @@ func (t *Tracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Addr
 	if t.config.WithFrame {
 		sub := &Frame{
 			Opcode: typ,
-			Value: &FrameCall{
+			Data: &FrameCall{
 				From:  from,
 				To:    to,
 				Value: value,
@@ -161,7 +161,7 @@ func (t *Tracer) CaptureEnter(typ vm.OpCode, from common.Address, to common.Addr
 }
 
 func (f *Frame) processOutput(gasUsed uint64, output []byte, err error) {
-	call := f.Value.(*FrameCall)
+	call := f.Data.(*FrameCall)
 	call.GasUsed = gasUsed
 	output = common.CopyBytes(output)
 	call.Output = output
@@ -208,7 +208,7 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 			value := t.env.StateDB.GetState(scope.Contract.Address(), slot)
 			t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
 				Opcode: op,
-				Value: &FrameStorage{
+				Data: &FrameStorage{
 					Key:   slot,
 					Value: value,
 				},
@@ -230,7 +230,7 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 			value := common.Hash(stack[stackLen-2].Bytes32())
 			t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
 				Opcode: op,
-				Value: &FrameStorage{
+				Data: &FrameStorage{
 					Key:   slot,
 					Value: value,
 				},
@@ -252,7 +252,7 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 			value := t.env.StateDB.(vm.StateDB).GetTransientState(scope.Contract.Address(), slot)
 			t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
 				Opcode: op,
-				Value: &FrameStorage{
+				Data: &FrameStorage{
 					Key:   slot,
 					Value: value,
 				},
@@ -267,7 +267,7 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 			value := common.Hash(stack[stackLen-2].Bytes32())
 			t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
 				Opcode: op,
-				Value: &FrameStorage{
+				Data: &FrameStorage{
 					Key:   slot,
 					Value: value,
 				},
