@@ -293,6 +293,35 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 				t.list.addAddress(addr)
 			}
 		}
+
+	case vm.LOG0, vm.LOG1, vm.LOG2, vm.LOG3, vm.LOG4:
+		size := int(op - vm.LOG0)
+		if stackLen < size+2 {
+			return
+		}
+		// Don't modify the stack
+		mStart := stack[len(stack)-1]
+		mSize := stack[len(stack)-2]
+		topics := make([]common.Hash, size)
+		for i := 0; i < size; i++ {
+			topic := stack[len(stack)-2-(i+1)]
+			topics[i] = topic.Bytes32()
+		}
+		data, err := tracers.GetMemoryCopyPadded(scope.Memory, int64(mStart.Uint64()), int64(mSize.Uint64()))
+		if err != nil {
+			// mSize was unrealistically large
+			return
+		}
+		if t.config.WithFrame {
+			t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
+				Opcode: op,
+				Data: &FrameLog{
+					Address: scope.Contract.Address(),
+					Topics:  topics,
+					Data:    data,
+				},
+			})
+		}
 	}
 }
 
