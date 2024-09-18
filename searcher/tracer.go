@@ -5,8 +5,10 @@ import (
 	"errors"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/tracers"
 	"math/big"
 	"sync/atomic"
@@ -208,10 +210,7 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 			value := t.env.StateDB.GetState(scope.Contract.Address(), slot)
 			t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
 				Opcode: op,
-				Data: &FrameStorage{
-					Key:   slot,
-					Value: value,
-				},
+				Data:   &FramePair{(*hexutil.Big)(slot.Big()), (*hexutil.Big)(value.Big())},
 			})
 		}
 		if t.config.WithAccessList {
@@ -230,10 +229,7 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 			value := common.Hash(stack[stackLen-2].Bytes32())
 			t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
 				Opcode: op,
-				Data: &FrameStorage{
-					Key:   slot,
-					Value: value,
-				},
+				Data:   &FramePair{(*hexutil.Big)(slot.Big()), (*hexutil.Big)(value.Big())},
 			})
 		}
 		if t.config.WithAccessList {
@@ -252,10 +248,7 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 			value := t.env.StateDB.(vm.StateDB).GetTransientState(scope.Contract.Address(), slot)
 			t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
 				Opcode: op,
-				Data: &FrameStorage{
-					Key:   slot,
-					Value: value,
-				},
+				Data:   &FramePair{(*hexutil.Big)(slot.Big()), (*hexutil.Big)(value.Big())},
 			})
 		}
 	case vm.TSTORE:
@@ -267,15 +260,35 @@ func (t *Tracer) CaptureState(pc uint64, op vm.OpCode, gas, cost uint64, scope *
 			value := common.Hash(stack[stackLen-2].Bytes32())
 			t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
 				Opcode: op,
-				Data: &FrameStorage{
-					Key:   slot,
-					Value: value,
-				},
+				Data:   &FramePair{(*hexutil.Big)(slot.Big()), (*hexutil.Big)(value.Big())},
 			})
 		}
 	case vm.BALANCE, vm.EXTCODESIZE, vm.EXTCODECOPY, vm.EXTCODEHASH, vm.SELFDESTRUCT:
 		if stackLen < 1 {
 			return
+		}
+		if t.config.WithStorage {
+			key := stack[stackLen-1]
+			addr := common.Address(key.Bytes20())
+			switch op {
+			case vm.BALANCE:
+				t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
+					Opcode: op,
+					Data:   &FramePair{(*hexutil.Big)(key.ToBig()), (*hexutil.Big)(t.env.StateDB.GetBalance(addr).ToBig())},
+				})
+			case vm.EXTCODESIZE:
+				size := len(t.env.StateDB.GetCode(addr))
+				t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
+					Opcode: op,
+					Data:   &FramePair{(*hexutil.Big)(key.ToBig()), (*hexutil.Big)(big.NewInt(int64(size)))},
+				})
+			case vm.EXTCODEHASH:
+				hash := crypto.Keccak256Hash(t.env.StateDB.GetCode(addr))
+				t.currentFrame.Subs = append(t.currentFrame.Subs, &Frame{
+					Opcode: op,
+					Data:   &FramePair{(*hexutil.Big)(key.ToBig()), (*hexutil.Big)(hash.Big())},
+				})
+			}
 		}
 		if t.config.WithAccessList {
 			addr := common.Address(stack[stackLen-1].Bytes20())

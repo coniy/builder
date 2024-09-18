@@ -225,7 +225,7 @@ func (f *Frame) UnmarshalJSON(data []byte) error {
 		}
 		f.Data = log
 	case vm.SLOAD, vm.SSTORE, vm.TLOAD, vm.TSTORE:
-		storage := new(FrameStorage)
+		storage := new(FramePair)
 		if err := json.Unmarshal(alias.Data, storage); err != nil {
 			return err
 		}
@@ -278,10 +278,7 @@ func (l *FrameLog) ToLog() *types.Log {
 	}
 }
 
-type FrameStorage struct {
-	Key   common.Hash `json:"key,omitempty"`
-	Value common.Hash `json:"value,omitempty"`
-}
+type FramePair [2]*hexutil.Big
 
 type ChainDataArgs struct {
 	StateBlockNumberOrHash rpc.BlockNumberOrHash            `json:"stateBlockNumber,omitempty"`
