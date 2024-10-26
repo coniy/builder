@@ -2211,7 +2211,7 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 			availableFunds.Div(availableFunds, big.NewInt(1000))
 		}
 	} else {
-		if w.config.MempoolSubsidy.Sign() > 0 && reserve.builderBalance.Cmp(w.config.MempoolSubsidy) > 0 {
+		if w.config.MempoolSubsidy != nil && w.config.MempoolSubsidy.Sign() > 0 && reserve.builderBalance.Cmp(w.config.MempoolSubsidy) > 0 {
 			availableFunds.Add(availableFunds, w.config.MempoolSubsidy)
 		}
 	}
